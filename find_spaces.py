@@ -294,7 +294,6 @@ for f in vacant_features:
     vacant_rows.append({
         "address": addr,
         "owner_name": p["owner"],
-        "layer": "vacant",
         "source": "City of Chicago Open Data",
         "geometry": f"SRID=4326;POINT({lon} {lat})",
     })
@@ -303,7 +302,7 @@ for i in range(0, len(vacant_rows), 500):
     supabase.table("candidate_plots").upsert(vacant_rows[i:i+500], on_conflict="address").execute()
 print(f"✅ Pushed {len(vacant_rows)} vacant plots to Supabase")
 
-# Push gardens
+# Push existing gardens into the gardens table
 garden_rows = []
 seen_gardens = set()
 for f in garden_features:
@@ -314,13 +313,13 @@ for f in garden_features:
         continue
     seen_gardens.add(name)
     garden_rows.append({
+        "name": name,
         "address": p["address"],
-        "owner_name": name,
-        "layer": "garden",
-        "source": p["source"],
-        "geometry": f"SRID=4326;POINT({lon} {lat})",
+        "lat": lat,
+        "lng": lon,
+        "description": f"Existing community garden. Source: {p['source']}",
     })
 
 for i in range(0, len(garden_rows), 500):
-    supabase.table("candidate_plots").upsert(garden_rows[i:i+500], on_conflict="address").execute()
+    supabase.table("gardens").upsert(garden_rows[i:i+500], on_conflict="name").execute()
 print(f"✅ Pushed {len(garden_rows)} gardens to Supabase")
