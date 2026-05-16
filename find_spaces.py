@@ -2,6 +2,11 @@ import requests
 import json
 import webbrowser
 import os
+from dotenv import load_dotenv
+from supabase import create_client
+
+load_dotenv()
+supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
 
 print("Fetching city-owned vacant properties in Chicago...")
 
@@ -173,3 +178,27 @@ with open('forage_map.html', 'w', encoding='utf-8') as f:
 
 webbrowser.open('file://' + os.path.abspath('forage_map.html'))
 print("Map opened in your browser!")
+
+# Push to Supabase
+print("Pushing to Supabase...")
+seen = set()
+rows = []
+for f in features:
+    lon, lat = f["geometry"]["coordinates"]
+    p = f["properties"]
+    addr = p["address"]
+    if addr in seen:
+        continue
+    seen.add(addr)
+    rows.append({
+        "address": addr,
+        "owner_name": p["owner"],
+        "source": "City of Chicago Open Data",
+        "geometry": f"SRID=4326;POINT({lon} {lat})",
+    })
+
+# batch in chunks of 500 to stay under payload limits
+for i in range(0, len(rows), 500):
+    supabase.table("candidate_plots").upsert(rows[i:i+500], on_conflict="address").execute()
+
+print(f"✅ Pushed {len(rows)} plots to Supabase")
