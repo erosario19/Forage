@@ -1,0 +1,8 @@
+venv/
+*.json
+.env
+.vscode/
+__pycache__/
+*.geojson
+*.html
+desktop.ini
