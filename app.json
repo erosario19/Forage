@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Community Garden",
+    "slug": "community-garden-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#2D5A27"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourname.communitygarden"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#2D5A27"
+      },
+      "package": "com.yourname.communitygarden"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

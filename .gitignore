@@ -1,8 +1,13 @@
+# Backend
 venv/
-*.json
 .env
 .vscode/
 __pycache__/
 *.geojson
 *.html
 desktop.ini
+
+# Frontend
+node_modules/
+.expo/
+*.log
