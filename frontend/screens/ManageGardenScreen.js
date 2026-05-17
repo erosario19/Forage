@@ -27,40 +27,58 @@ const STATUS_COLORS = { good: '#4CAF50', fair: '#FF9800', poor: '#F44336' };
 const GRID_COLS = 8;
 const GRID_ROWS = 6;
 
-// ── Gemini helpers ────────────────────────────────────────────────────────────
-async function geminiText(prompt) {
-  const key = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+// ── Hugging Face helpers ──────────────────────────────────────────────────────
+async function hfText(prompt) {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+    'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3',
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-    }
-  );
-  const data = await res.json();
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? 'No response.';
-}
-
-async function geminiVision(base64, mimeType) {
-  const key = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Authorization': `Bearer ${process.env.EXPO_PUBLIC_HF_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: 'Look at this plant photo. Rate its health as exactly one of: good, fair, or poor. Then give a one-sentence reason. Format: "Health: <rating>. <reason>"' },
-            { inline_data: { mime_type: mimeType, data: base64 } },
-          ],
-        }],
+        inputs: prompt,
+        parameters: { max_new_tokens: 200, return_full_text: false },
       }),
     }
   );
   const data = await res.json();
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  console.log('HF text response:', JSON.stringify(data).slice(0, 200));
+  return data?.[0]?.generated_text ?? 'No response.';
+}
+
+async function hfVision(base64, mimeType) {
+  const byteCharacters = atob(base64);
+  const byteNumbers = Array.from(byteCharacters).map(c => c.charCodeAt(0));
+  const byteArray = new Uint8Array(byteNumbers);
+  const blob = new Blob([byteArray], { type: mimeType });
+
+  const res = await fetch(
+    'https://api-inference.huggingface.co/models/google/vit-base-patch16-224',
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.EXPO_PUBLIC_HF_TOKEN}`,
+        'Content-Type': mimeType,
+      },
+      body: blob,
+    }
+  );
+  const data = await res.json();
+  console.log('HF vision response:', JSON.stringify(data).slice(0, 200));
+
+  if (data?.error) return 'Health: fair. Unable to analyze image at this time.';
+  if (Array.isArray(data) && data.length > 0) {
+    const top = data[0]?.label?.toLowerCase() ?? '';
+    if (top.includes('yellow') || top.includes('dead') || top.includes('dry')) {
+      return 'Health: poor. The plant shows signs of stress or disease.';
+    } else if (top.includes('green') || top.includes('plant') || top.includes('leaf')) {
+      return 'Health: good. The plant appears healthy with vibrant foliage.';
+    }
+    return `Health: fair. Plant detected with label: ${data[0]?.label}.`;
+  }
+  return 'Health: fair. Could not determine plant health from image.';
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -69,16 +87,14 @@ export default function ManageGardenScreen() {
   const [selectedGarden, setSelectedGarden] = useState(null);
   const [plants, setPlants]             = useState([]);
   const [loading, setLoading]           = useState(true);
-  const [tab, setTab]                   = useState('planner'); // 'planner' | 'plants' | 'schedule'
+  const [tab, setTab]                   = useState('planner');
 
-  // Garden planner state
-  const [plotCells, setPlotCells]       = useState(new Set()); // "r-c" strings
-  const [plantCells, setPlantCells]     = useState({});        // "r-c" → plant object
-  const [plannerMode, setPlannerMode]   = useState('view');    // 'add-plot' | 'add-plant' | 'view'
+  const [plotCells, setPlotCells]       = useState(new Set());
+  const [plantCells, setPlantCells]     = useState({});
+  const [plannerMode, setPlannerMode]   = useState('view');
   const [selectedCategory, setSelectedCategory] = useState('vegetable');
   const [selectedPlotCell, setSelectedPlotCell] = useState(null);
 
-  // Add plant modal
   const [addPlantModal, setAddPlantModal] = useState(false);
   const [plantName, setPlantName]       = useState('');
   const [plantCategory, setPlantCategory] = useState('vegetable');
@@ -86,12 +102,10 @@ export default function ManageGardenScreen() {
   const [botSuggestion, setBotSuggestion] = useState('');
   const [botLoading, setBotLoading]     = useState(false);
 
-  // Add plot modal
   const [addPlotModal, setAddPlotModal] = useState(false);
   const [plotName, setPlotName]         = useState('');
   const [plotDesc, setPlotDesc]         = useState('');
 
-  // Vision
   const [visionImage, setVisionImage]   = useState(null);
   const [visionResult, setVisionResult] = useState('');
   const [visionLoading, setVisionLoading] = useState(false);
@@ -115,7 +129,6 @@ export default function ManageGardenScreen() {
 
   useEffect(() => { refreshPlants(); }, [refreshPlants]);
 
-  // ── Garden planner cell tap ────────────────────────────────────────────────
   const onCellPress = (r, c) => {
     const key = `${r}-${c}`;
     if (plannerMode === 'add-plot') {
@@ -131,7 +144,6 @@ export default function ManageGardenScreen() {
     }
   };
 
-  // ── Add plant to DB ────────────────────────────────────────────────────────
   const submitPlant = async () => {
     if (!plantName.trim() || !selectedGarden) return;
     setSubmitting(true);
@@ -148,7 +160,6 @@ export default function ManageGardenScreen() {
     refreshPlants();
   };
 
-  // ── Add plot (new garden) ──────────────────────────────────────────────────
   const submitPlot = async () => {
     if (!plotName.trim()) return;
     setSubmitting(true);
@@ -163,32 +174,45 @@ export default function ManageGardenScreen() {
     setAddPlotModal(false);
   };
 
-  // ── Gemini plant bot ───────────────────────────────────────────────────────
   const getAISuggestion = async () => {
     setBotLoading(true); setBotSuggestion('');
     const plantList = plants.map(p => `${p.name} (${p.category || 'plant'})`).join(', ') || 'none yet';
-    const text = await geminiText(
-      `You are a community garden assistant for Chicago, IL (zone 6a). The garden has: ${plantList}. The gardener wants to add a ${plantCategory}. Suggest 2-3 specific plants that grow well together and briefly explain placement. Be concise.`
+    const text = await hfText(
+      `[INST]You are a community garden assistant for Chicago, IL (zone 6a). The garden has: ${plantList}. The gardener wants to add a ${plantCategory}. Suggest 2-3 specific plants that grow well together and briefly explain placement. Be concise.[/INST]`
     );
     setBotSuggestion(text);
     setBotLoading(false);
   };
 
-  // ── Gemini vision plant health ─────────────────────────────────────────────
   const pickAndAnalyze = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { Alert.alert('Permission needed', 'Allow photo access to analyze plant health.'); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      base64: true, quality: 0.6,
-    });
-    if (result.canceled) return;
-    const asset = result.assets[0];
-    setVisionImage(asset.uri);
-    setVisionLoading(true); setVisionResult('');
-    const text = await geminiVision(asset.base64, asset.mimeType || 'image/jpeg');
-    setVisionResult(text);
-    setVisionLoading(false);
+    console.log('pickAndAnalyze called');
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      console.log('Permission:', perm.status);
+      if (perm.status !== 'granted') {
+        Alert.alert('Permission needed', 'Allow photo access to analyze plant health.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        base64: true,
+        quality: 0.6,
+      });
+      console.log('Picker done, canceled:', result.canceled);
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      setVisionImage(asset.uri);
+      setVisionLoading(true);
+      setVisionResult('');
+      console.log('Sending to HF...');
+      const text = await hfVision(asset.base64, asset.mimeType || 'image/jpeg');
+      console.log('HF says:', text);
+      setVisionResult(text);
+      setVisionLoading(false);
+    } catch (e) {
+      console.error('Error:', e.message);
+      Alert.alert('Error', e.message);
+    }
   };
 
   const parseStatus = (text) => {
@@ -214,7 +238,6 @@ export default function ManageGardenScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      {/* Garden picker */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
         style={styles.pickerRow} contentContainerStyle={styles.pickerContent}>
         {gardens.map(g => (
@@ -226,7 +249,6 @@ export default function ManageGardenScreen() {
         ))}
       </ScrollView>
 
-      {/* Action buttons */}
       <View style={styles.actionRow}>
         <TouchableOpacity style={styles.actionBtn} onPress={() => setAddPlotModal(true)}>
           <Ionicons name="add-circle-outline" size={15} color="#fff" />
@@ -242,7 +264,6 @@ export default function ManageGardenScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Tabs */}
       <View style={styles.tabs}>
         {[['planner','grid','Planner'], ['plants','leaf','Plants'], ['schedule','calendar','Schedule']].map(([key, icon, label]) => (
           <TouchableOpacity key={key} style={[styles.tab, tab === key && styles.tabActive]} onPress={() => setTab(key)}>
@@ -254,7 +275,6 @@ export default function ManageGardenScreen() {
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
 
-        {/* ── GARDEN PLANNER ─────────────────────────────────────────────── */}
         {tab === 'planner' && (
           <View style={styles.plannerContainer}>
             <Text style={styles.plannerHint}>
@@ -263,7 +283,6 @@ export default function ManageGardenScreen() {
                'Tap "Add Plot" to start building your garden layout'}
             </Text>
 
-            {/* Mode controls */}
             <View style={styles.modeRow}>
               <TouchableOpacity
                 style={[styles.modeBtn, plannerMode === 'add-plot' && { backgroundColor: '#8B5E3C' }]}
@@ -271,7 +290,6 @@ export default function ManageGardenScreen() {
                 <Text style={[styles.modeBtnText, plannerMode === 'add-plot' && { color: '#fff' }]}>🟫 Plot</Text>
               </TouchableOpacity>
 
-              {/* Category picker for plant mode */}
               {CATEGORIES.map(cat => (
                 <TouchableOpacity key={cat.key}
                   style={[styles.modeBtn, plannerMode === 'add-plant' && selectedCategory === cat.key && { backgroundColor: cat.color }]}
@@ -283,7 +301,6 @@ export default function ManageGardenScreen() {
               ))}
             </View>
 
-            {/* Garden grid */}
             <View style={styles.gardenGrid}>
               {Array.from({ length: GRID_ROWS }).map((_, r) => (
                 <View key={r} style={styles.gridRow}>
@@ -302,7 +319,6 @@ export default function ManageGardenScreen() {
               ))}
             </View>
 
-            {/* Vision health check */}
             <View style={styles.visionSection}>
               <Text style={styles.sectionTitle}>AI Plant Health Check</Text>
               <TouchableOpacity style={styles.visionBtn} onPress={pickAndAnalyze} disabled={visionLoading}>
@@ -321,10 +337,8 @@ export default function ManageGardenScreen() {
           </View>
         )}
 
-        {/* ── PLANTS LIST ────────────────────────────────────────────────── */}
         {tab === 'plants' && (
           <View style={{ padding: 12 }}>
-            {/* Category filter */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}
               contentContainerStyle={{ gap: 8, paddingHorizontal: 4 }}>
               <TouchableOpacity style={[styles.catChip, !selectedCategory && styles.catChipActive]}
@@ -366,13 +380,11 @@ export default function ManageGardenScreen() {
           </View>
         )}
 
-        {/* ── SCHEDULE ──────────────────────────────────────────────────── */}
         {tab === 'schedule' && (
           <GardenCalendar gardenId={selectedGarden?.id} />
         )}
       </ScrollView>
 
-      {/* ── Add Plant modal ──────────────────────────────────────────────────── */}
       <Modal visible={addPlantModal} transparent animationType="slide"
         onRequestClose={() => setAddPlantModal(false)}>
         <View style={styles.overlay}>
@@ -416,7 +428,7 @@ export default function ManageGardenScreen() {
 
             <TouchableOpacity style={styles.botBtn} onPress={getAISuggestion} disabled={botLoading}>
               <Ionicons name="sparkles" size={15} color={COLORS.primary} />
-              <Text style={styles.botBtnText}>{botLoading ? 'Asking Gemini...' : 'Ask AI for plant suggestions'}</Text>
+              <Text style={styles.botBtnText}>{botLoading ? 'Thinking...' : 'Ask AI for plant suggestions'}</Text>
             </TouchableOpacity>
             {botLoading && <ActivityIndicator size="small" color={COLORS.primary} style={{ marginTop: 6 }} />}
             {botSuggestion ? (
@@ -435,7 +447,6 @@ export default function ManageGardenScreen() {
         </View>
       </Modal>
 
-      {/* ── Add Plot modal ───────────────────────────────────────────────────── */}
       <Modal visible={addPlotModal} transparent animationType="slide"
         onRequestClose={() => setAddPlotModal(false)}>
         <View style={styles.overlay}>
@@ -491,8 +502,6 @@ const styles = StyleSheet.create({
   tabActive:      { borderBottomWidth: 2, borderBottomColor: COLORS.primary },
   tabText:        { fontSize: 13, fontWeight: '600', color: COLORS.subtext },
   tabTextActive:  { color: COLORS.primary },
-
-  // Planner
   plannerContainer: { padding: 12 },
   plannerHint:    { fontSize: 13, color: COLORS.subtext, textAlign: 'center', marginBottom: 10, fontStyle: 'italic' },
   modeRow:        { flexDirection: 'row', gap: 6, marginBottom: 10, flexWrap: 'wrap' },
@@ -503,7 +512,6 @@ const styles = StyleSheet.create({
   gridCell:       { flex: 1, aspectRatio: 1, margin: 2, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center' },
   plotCell:       { backgroundColor: '#8B5E3C' },
   plantEmoji:     { fontSize: 14 },
-
   visionSection:  { marginTop: 16, backgroundColor: '#fff', borderRadius: 14, padding: 14 },
   sectionTitle:   { fontSize: 14, fontWeight: '700', color: COLORS.text, marginBottom: 10 },
   visionBtn:      { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#EFF7EE', padding: 12, borderRadius: 10 },
@@ -511,8 +519,6 @@ const styles = StyleSheet.create({
   visionPreview:  { width: '100%', height: 160, borderRadius: 10, marginTop: 10, resizeMode: 'cover' },
   visionResult:   { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: '#F8FFF8', borderRadius: 10, padding: 12, marginTop: 8, borderLeftWidth: 3 },
   visionResultText: { flex: 1, fontSize: 13, color: COLORS.text, lineHeight: 19 },
-
-  // Plants list
   catRow:         { marginBottom: 12 },
   catChip:        { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: '#EEE' },
   catChipActive:  { backgroundColor: COLORS.primary },
@@ -523,8 +529,6 @@ const styles = StyleSheet.create({
   plantMeta:      { fontSize: 12, color: COLORS.subtext, marginTop: 2 },
   statusDot:      { width: 12, height: 12, borderRadius: 6 },
   emptyCard:      { alignItems: 'center', padding: 40 },
-
-  // Modals
   overlay:        { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
   sheet:          { backgroundColor: COLORS.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 44 },
   handle:         { width: 40, height: 4, backgroundColor: '#DDD', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
