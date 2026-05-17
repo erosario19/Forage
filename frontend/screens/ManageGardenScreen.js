@@ -15,52 +15,12 @@ const COLORS = {
   background: '#F5F0E8', text: '#1C2B1A', subtext: '#5A7A58', card: '#FFFFFF',
 };
 
-const PLANT_CATEGORIES = [
-  { key: 'fruits',      label: 'Fruits',      color: '#E91E63' },
-  { key: 'vegetables',  label: 'Vegetables',  color: '#4CAF50' },
-  { key: 'herbs',       label: 'Herbs',       color: '#8BC34A' },
-  { key: 'ornamentals', label: 'Ornamentals', color: '#9C27B0' },
+const CATEGORIES = [
+  { key: 'vegetable',  label: 'Veg',        emoji: '🥦', color: '#4CAF50' },
+  { key: 'fruit',      label: 'Fruit',      emoji: '🍓', color: '#E91E63' },
+  { key: 'herb',       label: 'Herb',       emoji: '🌿', color: '#8BC34A' },
+  { key: 'ornamental', label: 'Ornamental', emoji: '🌸', color: '#9C27B0' },
 ];
-
-const PLANT_EMOJIS = {
-  fruits: [
-    { emoji: '🍎', name: 'Apple' }, { emoji: '🍊', name: 'Orange' },
-    { emoji: '🍋', name: 'Lemon' }, { emoji: '🍇', name: 'Grapes' },
-    { emoji: '🍓', name: 'Strawberry' }, { emoji: '🍑', name: 'Peach' },
-    { emoji: '🍒', name: 'Cherry' }, { emoji: '🥭', name: 'Mango' },
-    { emoji: '🍍', name: 'Pineapple' }, { emoji: '🥝', name: 'Kiwi' },
-    { emoji: '🍌', name: 'Banana' }, { emoji: '🍉', name: 'Watermelon' },
-    { emoji: '🍐', name: 'Pear' }, { emoji: '🫐', name: 'Blueberry' },
-    { emoji: '🍅', name: 'Tomato' }, { emoji: '🥥', name: 'Coconut' },
-    { emoji: '🍈', name: 'Melon' }, { emoji: '🫒', name: 'Olive' },
-  ],
-  vegetables: [
-    { emoji: '🥦', name: 'Broccoli' }, { emoji: '🥕', name: 'Carrot' },
-    { emoji: '🌽', name: 'Corn' }, { emoji: '🥒', name: 'Cucumber' },
-    { emoji: '🧅', name: 'Onion' }, { emoji: '🧄', name: 'Garlic' },
-    { emoji: '🥔', name: 'Potato' }, { emoji: '🍠', name: 'Sweet Potato' },
-    { emoji: '🥬', name: 'Lettuce' }, { emoji: '🥑', name: 'Avocado' },
-    { emoji: '🫑', name: 'Bell Pepper' }, { emoji: '🌶️', name: 'Chili' },
-    { emoji: '🍆', name: 'Eggplant' }, { emoji: '🫛', name: 'Pea Pod' },
-    { emoji: '🥜', name: 'Peanut' }, { emoji: '🫘', name: 'Beans' },
-    { emoji: '🌰', name: 'Chestnut' }, { emoji: '🥗', name: 'Greens' },
-  ],
-  herbs: [
-    { emoji: '🌿', name: 'Basil' }, { emoji: '🍃', name: 'Mint' },
-    { emoji: '🌱', name: 'Sprout' }, { emoji: '🪴', name: 'Potted Plant' },
-    { emoji: '🎋', name: 'Bamboo' }, { emoji: '🍀', name: 'Clover' },
-    { emoji: '☘️', name: 'Shamrock' }, { emoji: '🌾', name: 'Wheat' },
-    { emoji: '🫚', name: 'Olive Oil' }, { emoji: '🧂', name: 'Salt Plant' },
-  ],
-  ornamentals: [
-    { emoji: '🌸', name: 'Cherry Blossom' }, { emoji: '🌺', name: 'Hibiscus' },
-    { emoji: '🌻', name: 'Sunflower' }, { emoji: '🌹', name: 'Rose' },
-    { emoji: '🌷', name: 'Tulip' }, { emoji: '💐', name: 'Bouquet' },
-    { emoji: '🌼', name: 'Daisy' }, { emoji: '🪷', name: 'Lotus' },
-    { emoji: '🏵️', name: 'Rosette' }, { emoji: '🌵', name: 'Cactus' },
-    { emoji: '🎍', name: 'Pine Deco' }, { emoji: '🍁', name: 'Maple' },
-  ],
-};
 
 const STATUS_COLORS = { good: '#4CAF50', fair: '#FF9800', poor: '#F44336' };
 
@@ -80,25 +40,6 @@ async function geminiText(prompt) {
   );
   const data = await res.json();
   return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? 'No response.';
-}
-
-async function geminiEmoji(plantName) {
-  try {
-    const key = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: `Give me one emoji for a ${plantName} plant. Reply with only the emoji, nothing else.` }] }] }),
-      }
-    );
-    const data = await res.json();
-    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    return raw.trim().split(/\s/)[0] || '🌱';
-  } catch {
-    return '🌱';
-  }
 }
 
 async function geminiVision(base64, mimeType) {
@@ -132,18 +73,15 @@ export default function ManageGardenScreen() {
 
   // Garden planner state
   const [plotCells, setPlotCells]       = useState(new Set()); // "r-c" strings
-  const [hydroCells, setHydroCells]     = useState(new Set()); // "r-c" strings
   const [plantCells, setPlantCells]     = useState({});        // "r-c" → plant object
-  const [plannerMode, setPlannerMode]   = useState('view');    // 'add-plot' | 'add-hydro' | 'add-plant' | 'view'
-  const [selectedPlantForGrid, setSelectedPlantForGrid] = useState(null); // {id, name, emoji}
-  const [trayPlants, setTrayPlants] = useState([]); // [{id, name, emoji}] — local only
+  const [plannerMode, setPlannerMode]   = useState('view');    // 'add-plot' | 'add-plant' | 'view'
   const [selectedCategory, setSelectedCategory] = useState('vegetable');
   const [selectedPlotCell, setSelectedPlotCell] = useState(null);
 
   // Add plant modal
   const [addPlantModal, setAddPlantModal] = useState(false);
-  const [emojiCategory, setEmojiCategory] = useState('fruits');
-  const [customPlantName, setCustomPlantName] = useState('');
+  const [plantName, setPlantName]       = useState('');
+  const [plantCategory, setPlantCategory] = useState('vegetable');
   const [plantStatus, setPlantStatus]   = useState('good');
   const [botSuggestion, setBotSuggestion] = useState('');
   const [botLoading, setBotLoading]     = useState(false);
@@ -183,43 +121,30 @@ export default function ManageGardenScreen() {
     if (plannerMode === 'add-plot') {
       setPlotCells(prev => {
         const next = new Set(prev);
-        if (next.has(key)) {
-          next.delete(key);
-          setPlantCells(p => { const n = { ...p }; delete n[key]; return n; });
-        } else next.add(key);
+        if (next.has(key)) next.delete(key); else next.add(key);
         return next;
       });
-      setHydroCells(prev => { const next = new Set(prev); next.delete(key); return next; });
-    } else if (plannerMode === 'add-hydro') {
-      setHydroCells(prev => {
-        const next = new Set(prev);
-        if (next.has(key)) {
-          next.delete(key);
-          setPlantCells(p => { const n = { ...p }; delete n[key]; return n; });
-        } else next.add(key);
-        return next;
-      });
-      setPlotCells(prev => { const next = new Set(prev); next.delete(key); return next; });
     } else if (plannerMode === 'add-plant') {
-      if (!plotCells.has(key) && !hydroCells.has(key)) { Alert.alert('Select a plot first', 'Tap a soil or hydro cell to place a plant.'); return; }
-      if (!selectedPlantForGrid) { Alert.alert('Select a plant', 'Tap a plant in the tray to select it first.'); return; }
-      setPlantCells(prev => ({ ...prev, [key]: selectedPlantForGrid }));
+      if (!plotCells.has(key)) { Alert.alert('Select a plot first', 'Tap a brown plot cell to place a plant.'); return; }
+      const cat = CATEGORIES.find(c => c.key === selectedCategory);
+      setPlantCells(prev => ({ ...prev, [key]: cat }));
     }
   };
 
   // ── Add plant to DB ────────────────────────────────────────────────────────
-  const addPlantFromEmoji = async ({ emoji, name }) => {
-    setTrayPlants(prev => {
-      if (prev.some(p => p.name.toLowerCase() === name.toLowerCase())) return prev;
-      return [...prev, { id: `plant-${Date.now()}`, name, emoji }];
+  const submitPlant = async () => {
+    if (!plantName.trim() || !selectedGarden) return;
+    setSubmitting(true);
+    const { error } = await supabase.from('plants').insert({
+      garden_id: selectedGarden.id,
+      name: plantName.trim(),
+      status: plantStatus,
+      category: plantCategory,
     });
+    setSubmitting(false);
+    if (error) { Alert.alert('Error', error.message); return; }
+    setPlantName(''); setBotSuggestion('');
     setAddPlantModal(false);
-    await supabase.from('plants').insert({
-      garden_id: selectedGarden?.id,
-      name,
-      status: 'good',
-      category: emojiCategory,
-    });
     refreshPlants();
   };
 
@@ -303,15 +228,23 @@ export default function ManageGardenScreen() {
 
       {/* Action buttons */}
       <View style={styles.actionRow}>
+        <TouchableOpacity style={styles.actionBtn} onPress={() => setAddPlotModal(true)}>
+          <Ionicons name="add-circle-outline" size={15} color="#fff" />
+          <Text style={styles.actionBtnText}>Add Plot</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.actionBtn} onPress={() => setAddPlantModal(true)}>
           <Ionicons name="leaf-outline" size={15} color="#fff" />
           <Text style={styles.actionBtnText}>Add Plant</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#3A7D44' }]} onPress={() => setTab('schedule')}>
+          <Ionicons name="calendar-outline" size={15} color="#fff" />
+          <Text style={styles.actionBtnText}>Schedule</Text>
         </TouchableOpacity>
       </View>
 
       {/* Tabs */}
       <View style={styles.tabs}>
-        {[['planner','grid','Planner'], ['schedule','calendar','Schedule']].map(([key, icon, label]) => (
+        {[['planner','grid','Planner'], ['plants','leaf','Plants'], ['schedule','calendar','Schedule']].map(([key, icon, label]) => (
           <TouchableOpacity key={key} style={[styles.tab, tab === key && styles.tabActive]} onPress={() => setTab(key)}>
             <Ionicons name={icon} size={15} color={tab === key ? COLORS.primary : COLORS.subtext} />
             <Text style={[styles.tabText, tab === key && styles.tabTextActive]}>{label}</Text>
@@ -325,10 +258,9 @@ export default function ManageGardenScreen() {
         {tab === 'planner' && (
           <View style={styles.plannerContainer}>
             <Text style={styles.plannerHint}>
-              {plannerMode === 'add-plot' ? '🟫 Tap cells to mark as soil beds' :
-               plannerMode === 'add-hydro' ? '🟦 Tap cells to mark as hydroponic beds' :
-               plannerMode === 'add-plant' ? `Tap a plot cell to place ${selectedPlantForGrid?.emoji ?? '🌱'} ${selectedPlantForGrid?.name ?? ''}` :
-               'Select a plot type or plant below'}
+              {plannerMode === 'add-plot' ? '🟫 Tap cells to mark as plot beds' :
+               plannerMode === 'add-plant' ? `${CATEGORIES.find(c => c.key === selectedCategory)?.emoji} Tap a brown plot to place plant` :
+               'Tap "Add Plot" to start building your garden layout'}
             </Text>
 
             {/* Mode controls */}
@@ -336,39 +268,20 @@ export default function ManageGardenScreen() {
               <TouchableOpacity
                 style={[styles.modeBtn, plannerMode === 'add-plot' && { backgroundColor: '#8B5E3C' }]}
                 onPress={() => setPlannerMode(plannerMode === 'add-plot' ? 'view' : 'add-plot')}>
-                <Text style={[styles.modeBtnText, plannerMode === 'add-plot' && { color: '#fff' }]}>🟫 Soil</Text>
+                <Text style={[styles.modeBtnText, plannerMode === 'add-plot' && { color: '#fff' }]}>🟫 Plot</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[styles.modeBtn, plannerMode === 'add-hydro' && { backgroundColor: '#1565C0' }]}
-                onPress={() => setPlannerMode(plannerMode === 'add-hydro' ? 'view' : 'add-hydro')}>
-                <Text style={[styles.modeBtnText, plannerMode === 'add-hydro' && { color: '#fff' }]}>🟦 Hydro</Text>
-              </TouchableOpacity>
+              {/* Category picker for plant mode */}
+              {CATEGORIES.map(cat => (
+                <TouchableOpacity key={cat.key}
+                  style={[styles.modeBtn, plannerMode === 'add-plant' && selectedCategory === cat.key && { backgroundColor: cat.color }]}
+                  onPress={() => { setSelectedCategory(cat.key); setPlannerMode('add-plant'); }}>
+                  <Text style={[styles.modeBtnText, plannerMode === 'add-plant' && selectedCategory === cat.key && { color: '#fff' }]}>
+                    {cat.emoji}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
-
-            {/* Plant tray — tap to select, then tap a cell to place */}
-            {trayPlants.length > 0 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                style={styles.plantTray} contentContainerStyle={{ gap: 8, paddingHorizontal: 4 }}>
-                {trayPlants.map(plant => {
-                  const isSelected = selectedPlantForGrid?.id === plant.id;
-                  return (
-                    <TouchableOpacity key={plant.id}
-                      style={[styles.trayItem, isSelected && styles.trayItemSelected]}
-                      onPress={() => {
-                        setSelectedPlantForGrid(plant);
-                        setPlannerMode('add-plant');
-                      }}>
-                      <Text style={styles.trayEmoji}>{plant.emoji}</Text>
-                      <Text style={styles.trayLabel} numberOfLines={1}>{plant.name}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            )}
-            {trayPlants.length === 0 && (
-              <Text style={styles.trayEmpty}>Add plants using the button above, then place them here</Text>
-            )}
 
             {/* Garden grid */}
             <View style={styles.gardenGrid}>
@@ -377,12 +290,9 @@ export default function ManageGardenScreen() {
                   {Array.from({ length: GRID_COLS }).map((_, c) => {
                     const key = `${r}-${c}`;
                     const isPlot = plotCells.has(key);
-                    const isHydro = hydroCells.has(key);
                     const plant = plantCells[key];
                     return (
-                      <TouchableOpacity
-                        key={c}
-                        style={[styles.gridCell, isPlot && styles.plotCell, isHydro && styles.hydroCell]}
+                      <TouchableOpacity key={c} style={[styles.gridCell, isPlot && styles.plotCell]}
                         onPress={() => onCellPress(r, c)}>
                         {plant && <Text style={styles.plantEmoji}>{plant.emoji}</Text>}
                       </TouchableOpacity>
@@ -462,12 +372,12 @@ export default function ManageGardenScreen() {
         )}
       </ScrollView>
 
-      {/* ── Add Plant modal — emoji picker ───────────────────────────────────── */}
+      {/* ── Add Plant modal ──────────────────────────────────────────────────── */}
       <Modal visible={addPlantModal} transparent animationType="slide"
         onRequestClose={() => setAddPlantModal(false)}>
         <View style={styles.overlay}>
           <TouchableOpacity style={{ flex: 1 }} onPress={() => setAddPlantModal(false)} />
-          <View style={[styles.sheet, { paddingBottom: 32 }]}>
+          <View style={styles.sheet}>
             <View style={styles.handle} />
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Add a Plant</Text>
@@ -476,63 +386,51 @@ export default function ManageGardenScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Category tabs */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}
-              style={{ marginBottom: 12 }} contentContainerStyle={{ gap: 8 }}>
-              {PLANT_CATEGORIES.map(cat => (
+            <Text style={styles.formLabel}>Plant name</Text>
+            <TextInput style={styles.formInput} placeholder="e.g. Cherry Tomatoes"
+              placeholderTextColor={COLORS.subtext} value={plantName} onChangeText={setPlantName} />
+
+            <Text style={styles.formLabel}>Category</Text>
+            <View style={styles.catPickRow}>
+              {CATEGORIES.map(cat => (
                 <TouchableOpacity key={cat.key}
-                  style={[styles.catPickBtn, emojiCategory === cat.key && { backgroundColor: cat.color }]}
-                  onPress={() => setEmojiCategory(cat.key)}>
-                  <Text style={[styles.catPickBtnText, emojiCategory === cat.key && { color: '#fff' }]}>
-                    {cat.label}
+                  style={[styles.catPickBtn, plantCategory === cat.key && { backgroundColor: cat.color }]}
+                  onPress={() => setPlantCategory(cat.key)}>
+                  <Text style={[styles.catPickBtnText, plantCategory === cat.key && { color: '#fff' }]}>
+                    {cat.emoji} {cat.label}
                   </Text>
                 </TouchableOpacity>
               ))}
-            </ScrollView>
-
-            {/* Emoji grid — tap one to add to tray and close */}
-            <ScrollView style={{ maxHeight: 260 }}>
-              <View style={styles.emojiGrid}>
-                {PLANT_EMOJIS[emojiCategory].map(item => (
-                  <TouchableOpacity key={item.name} style={styles.emojiItem}
-                    onPress={() => addPlantFromEmoji(item)}>
-                    <Text style={styles.emojiPickerIcon}>{item.emoji}</Text>
-                    <Text style={styles.emojiPickerName}>{item.name}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-
-            {/* Custom plant name */}
-            <View style={styles.customPlantRow}>
-              <Text style={styles.trayEmoji}>🌱</Text>
-              <TextInput
-                style={styles.customPlantInput}
-                placeholder="Or type a custom plant name..."
-                placeholderTextColor={COLORS.subtext}
-                value={customPlantName}
-                onChangeText={setCustomPlantName}
-                returnKeyType="done"
-                onSubmitEditing={() => {
-                  if (customPlantName.trim()) {
-                    addPlantFromEmoji({ emoji: '🌱', name: customPlantName.trim() });
-                    setCustomPlantName('');
-                  }
-                }}
-              />
-              <TouchableOpacity
-                style={[styles.customPlantBtn, !customPlantName.trim() && { opacity: 0.4 }]}
-                onPress={() => {
-                  if (customPlantName.trim()) {
-                    addPlantFromEmoji({ emoji: '🌱', name: customPlantName.trim() });
-                    setCustomPlantName('');
-                  }
-                }}
-                disabled={!customPlantName.trim()}
-              >
-                <Ionicons name="add" size={20} color="#fff" />
-              </TouchableOpacity>
             </View>
+
+            <Text style={styles.formLabel}>Health status</Text>
+            <View style={styles.statusRow}>
+              {['good','fair','poor'].map(s => (
+                <TouchableOpacity key={s}
+                  style={[styles.statusBtn, plantStatus === s && { backgroundColor: STATUS_COLORS[s] }]}
+                  onPress={() => setPlantStatus(s)}>
+                  <Text style={[styles.statusBtnText, plantStatus === s && { color: '#fff' }]}>{s}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity style={styles.botBtn} onPress={getAISuggestion} disabled={botLoading}>
+              <Ionicons name="sparkles" size={15} color={COLORS.primary} />
+              <Text style={styles.botBtnText}>{botLoading ? 'Asking Gemini...' : 'Ask AI for plant suggestions'}</Text>
+            </TouchableOpacity>
+            {botLoading && <ActivityIndicator size="small" color={COLORS.primary} style={{ marginTop: 6 }} />}
+            {botSuggestion ? (
+              <View style={styles.botResult}>
+                <Text style={styles.botResultText}>{botSuggestion}</Text>
+              </View>
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.primaryBtn, { marginTop: 14 }, submitting && { opacity: 0.6 }]}
+              onPress={submitPlant} disabled={submitting}>
+              <Ionicons name="leaf" size={16} color="#fff" />
+              <Text style={styles.primaryBtnText}>{submitting ? 'Adding...' : 'Add Plant'}</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -604,22 +502,8 @@ const styles = StyleSheet.create({
   gridRow:        { flexDirection: 'row' },
   gridCell:       { flex: 1, aspectRatio: 1, margin: 2, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center' },
   plotCell:       { backgroundColor: '#8B5E3C' },
-  hydroCell:      { backgroundColor: '#1565C0' },
   plantEmoji:     { fontSize: 14 },
 
-  customPlantRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, borderTopWidth: 1, borderTopColor: '#EEE', paddingTop: 14 },
-  customPlantInput:{ flex: 1, backgroundColor: COLORS.background, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: COLORS.text },
-  customPlantBtn:  { backgroundColor: COLORS.primary, borderRadius: 8, padding: 10 },
-  emojiGrid:      { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  emojiItem:      { width: '22%', alignItems: 'center', paddingVertical: 10, borderRadius: 12, backgroundColor: COLORS.background },
-  emojiPickerIcon:{ fontSize: 28 },
-  emojiPickerName:{ fontSize: 10, color: COLORS.subtext, marginTop: 3, textAlign: 'center' },
-  plantTray:      { maxHeight: 88, marginBottom: 10 },
-  trayItem:       { alignItems: 'center', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: '#EEE', minWidth: 60 },
-  trayItemSelected: { backgroundColor: '#C8E6C9', borderWidth: 2, borderColor: COLORS.primary },
-  trayEmoji:      { fontSize: 26 },
-  trayLabel:      { fontSize: 10, color: COLORS.subtext, marginTop: 3, maxWidth: 56, textAlign: 'center' },
-  trayEmpty:      { fontSize: 12, color: COLORS.subtext, fontStyle: 'italic', textAlign: 'center', marginBottom: 10 },
   visionSection:  { marginTop: 16, backgroundColor: '#fff', borderRadius: 14, padding: 14 },
   sectionTitle:   { fontSize: 14, fontWeight: '700', color: COLORS.text, marginBottom: 10 },
   visionBtn:      { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#EFF7EE', padding: 12, borderRadius: 10 },
