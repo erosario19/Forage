@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, ActivityIndicator,
   TouchableOpacity, RefreshControl, TextInput, Modal,
-  Linking, Platform, useWindowDimensions,
+  Linking, Platform, useWindowDimensions, KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -109,8 +109,8 @@ export default function ExistingGardensScreen() {
 
   const distLabel = (garden) => {
     if (!userCoords || !garden.lat || !garden.lng) return null;
-    const d = haversine(userCoords.lat, userCoords.lng, garden.lat, garden.lng);
-    return d < 1 ? `${(d * 1000).toFixed(0)}m away` : `${d.toFixed(1)}km away`;
+    const miles = haversine(userCoords.lat, userCoords.lng, garden.lat, garden.lng) * 0.621371;
+    return miles < 0.1 ? `${(miles * 5280).toFixed(0)} ft away` : `${miles.toFixed(1)} mi away`;
   };
 
   const renderGarden = ({ item }) => {
@@ -268,6 +268,7 @@ export default function ExistingGardensScreen() {
       {/* Join modal */}
       <Modal visible={joinModal} transparent animationType="slide"
         onRequestClose={() => setJoinModal(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setJoinModal(false)}>
           <View style={styles.sheet}>
             <View style={styles.handle} />
@@ -284,7 +285,7 @@ export default function ExistingGardensScreen() {
               keyboardType="email-address" autoCapitalize="none" />
 
             <TouchableOpacity
-              style={[styles.joinBtn, { marginTop: 16, paddingVertical: 14 }, joining && { opacity: 0.6 }]}
+              style={[styles.joinBtn, { flex: 0, marginTop: 16, paddingVertical: 14 }, joining && { opacity: 0.6 }]}
               onPress={handleJoin} disabled={joining}
             >
               <Ionicons name="people" size={16} color="#fff" />
@@ -292,6 +293,7 @@ export default function ExistingGardensScreen() {
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -326,11 +328,11 @@ const styles = StyleSheet.create({
   cardActions:  { flexDirection: 'row', gap: 8, marginTop: 8 },
   mapBtn:       { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#EFF7EE', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
   mapBtnText:   { fontSize: 12, fontWeight: '600', color: COLORS.primary },
-  joinBtn:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: COLORS.primary, paddingVertical: 8, borderRadius: 10 },
+  joinBtn:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: COLORS.primary, paddingVertical: 8, borderRadius: 10, minHeight: 40 },
   joinBtnDone:  { backgroundColor: COLORS.accent },
-  joinBtnText:  { color: '#fff', fontSize: 12, fontWeight: '700' },
+  joinBtnText:  { color: '#fff', fontSize: 14, fontWeight: '700' },
   overlay:      { flex: 1, justifyContent: 'flex-end' },
-  sheet:        { backgroundColor: COLORS.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 12, shadowOffset: { width: 0, height: -4 }, elevation: 10 },
+  sheet:        { backgroundColor: COLORS.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 60, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 12, shadowOffset: { width: 0, height: -4 }, elevation: 10 },
   handle:       { width: 40, height: 4, backgroundColor: '#DDD', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
   sheetTitle:   { fontSize: 20, fontWeight: '800', color: COLORS.text, marginBottom: 4 },
   sheetSub:     { fontSize: 13, color: COLORS.subtext, marginBottom: 8 },
