@@ -2,11 +2,9 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   TextInput, ActivityIndicator, Alert, Modal,
-  Image, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
 import GardenCalendar from '../components/GardenCalendar';
 
@@ -27,58 +25,59 @@ const STATUS_COLORS = { good: '#4CAF50', fair: '#FF9800', poor: '#F44336' };
 const GRID_COLS = 8;
 const GRID_ROWS = 6;
 
-// ── Hugging Face helpers ──────────────────────────────────────────────────────
-async function hfText(prompt) {
-  const res = await fetch(
-    'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3',
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.EXPO_PUBLIC_HF_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        inputs: prompt,
-        parameters: { max_new_tokens: 200, return_full_text: false },
-      }),
-    }
-  );
-  const data = await res.json();
-  console.log('HF text response:', JSON.stringify(data).slice(0, 200));
-  return data?.[0]?.generated_text ?? 'No response.';
-}
+// ── Chicago Plant Database (Zone 6a) ─────────────────────────────────────────
+const PLANT_DATABASE = {
+  vegetable: [
+    { name: 'Kale', companions: ['tomato', 'herb'], notes: 'Thrives in Chicago fall weather, plant in early spring or late summer.' },
+    { name: 'Tomatoes', companions: ['herb', 'vegetable'], notes: 'Plant after last frost (mid-May). Pair with basil for pest control.' },
+    { name: 'Lettuce', companions: ['vegetable', 'herb'], notes: 'Great for spring and fall. Bolts in summer heat.' },
+    { name: 'Peppers', companions: ['tomato', 'herb'], notes: 'Needs full sun and warm soil. Plant in late May.' },
+    { name: 'Zucchini', companions: ['vegetable'], notes: 'High yield, great for community gardens. Needs space.' },
+    { name: 'Green Beans', companions: ['vegetable', 'herb'], notes: 'Easy to grow, great for beginners. Bush varieties save space.' },
+    { name: 'Spinach', companions: ['vegetable', 'herb'], notes: 'Cool weather crop, perfect for Chicago spring/fall.' },
+    { name: 'Carrots', companions: ['vegetable', 'herb'], notes: 'Needs loose soil. Great companion with tomatoes.' },
+  ],
+  fruit: [
+    { name: 'Strawberries', companions: ['herb', 'vegetable'], notes: 'Hardy in Zone 6a. Great ground cover between larger plants.' },
+    { name: 'Blueberries', companions: ['fruit'], notes: 'Need acidic soil. Plant 2+ varieties for cross-pollination.' },
+    { name: 'Cherry Tomatoes', companions: ['herb', 'vegetable'], notes: 'Technically a fruit! High yield, great for community sharing.' },
+    { name: 'Raspberries', companions: ['fruit'], notes: 'Perennial. Plant along fence lines for support.' },
+  ],
+  herb: [
+    { name: 'Basil', companions: ['tomato', 'vegetable'], notes: 'Plant near tomatoes to repel pests and improve flavor.' },
+    { name: 'Mint', companions: ['vegetable'], notes: 'Keep in containers — spreads aggressively. Deters pests.' },
+    { name: 'Chives', companions: ['vegetable', 'fruit'], notes: 'Hardy perennial. Deters aphids, great with carrots.' },
+    { name: 'Parsley', companions: ['vegetable', 'herb'], notes: 'Biennial. Great companion plant and attracts beneficial insects.' },
+    { name: 'Thyme', companions: ['vegetable', 'herb'], notes: 'Drought tolerant once established. Repels cabbage worms.' },
+    { name: 'Lavender', companions: ['ornamental', 'herb'], notes: 'Attracts pollinators. Drought tolerant and deer resistant.' },
+  ],
+  ornamental: [
+    { name: 'Marigolds', companions: ['vegetable', 'herb'], notes: 'Repels pests naturally. Plant borders around vegetables.' },
+    { name: 'Sunflowers', companions: ['vegetable'], notes: 'Attracts pollinators. Can provide shade for heat-sensitive plants.' },
+    { name: 'Zinnias', companions: ['vegetable', 'ornamental'], notes: 'Attracts butterflies. Great for filling gaps between vegetables.' },
+    { name: 'Nasturtiums', companions: ['vegetable', 'herb'], notes: 'Edible flowers! Great trap crop for aphids.' },
+  ],
+};
 
-async function hfVision(base64, mimeType) {
-  const byteCharacters = atob(base64);
-  const byteNumbers = Array.from(byteCharacters).map(c => c.charCodeAt(0));
-  const byteArray = new Uint8Array(byteNumbers);
-  const blob = new Blob([byteArray], { type: mimeType });
+function getSuggestions(category, existingPlants) {
+  const pool = PLANT_DATABASE[category] || [];
+  const existingNames = existingPlants.map(p => p.name.toLowerCase());
+  const existingCategories = existingPlants.map(p => p.category);
 
-  const res = await fetch(
-    'https://api-inference.huggingface.co/models/google/vit-base-patch16-224',
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.EXPO_PUBLIC_HF_TOKEN}`,
-        'Content-Type': mimeType,
-      },
-      body: blob,
-    }
-  );
-  const data = await res.json();
-  console.log('HF vision response:', JSON.stringify(data).slice(0, 200));
+  // Filter out already existing plants
+  const available = pool.filter(p => !existingNames.includes(p.name.toLowerCase()));
 
-  if (data?.error) return 'Health: fair. Unable to analyze image at this time.';
-  if (Array.isArray(data) && data.length > 0) {
-    const top = data[0]?.label?.toLowerCase() ?? '';
-    if (top.includes('yellow') || top.includes('dead') || top.includes('dry')) {
-      return 'Health: poor. The plant shows signs of stress or disease.';
-    } else if (top.includes('green') || top.includes('plant') || top.includes('leaf')) {
-      return 'Health: good. The plant appears healthy with vibrant foliage.';
-    }
-    return `Health: fair. Plant detected with label: ${data[0]?.label}.`;
-  }
-  return 'Health: fair. Could not determine plant health from image.';
+  // Score plants by companion compatibility
+  const scored = available.map(plant => {
+    let score = 0;
+    existingCategories.forEach(cat => {
+      if (plant.companions.includes(cat)) score++;
+    });
+    return { ...plant, score };
+  });
+
+  // Sort by score and return top 3
+  return scored.sort((a, b) => b.score - a.score).slice(0, 3);
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -93,22 +92,16 @@ export default function ManageGardenScreen() {
   const [plantCells, setPlantCells]     = useState({});
   const [plannerMode, setPlannerMode]   = useState('view');
   const [selectedCategory, setSelectedCategory] = useState('vegetable');
-  const [selectedPlotCell, setSelectedPlotCell] = useState(null);
 
   const [addPlantModal, setAddPlantModal] = useState(false);
   const [plantName, setPlantName]       = useState('');
   const [plantCategory, setPlantCategory] = useState('vegetable');
   const [plantStatus, setPlantStatus]   = useState('good');
-  const [botSuggestion, setBotSuggestion] = useState('');
-  const [botLoading, setBotLoading]     = useState(false);
+  const [suggestions, setSuggestions]   = useState([]);
 
   const [addPlotModal, setAddPlotModal] = useState(false);
   const [plotName, setPlotName]         = useState('');
   const [plotDesc, setPlotDesc]         = useState('');
-
-  const [visionImage, setVisionImage]   = useState(null);
-  const [visionResult, setVisionResult] = useState('');
-  const [visionLoading, setVisionLoading] = useState(false);
 
   const [submitting, setSubmitting]     = useState(false);
 
@@ -128,6 +121,11 @@ export default function ManageGardenScreen() {
   }, [selectedGarden]);
 
   useEffect(() => { refreshPlants(); }, [refreshPlants]);
+
+  // Update suggestions when category or plants change
+  useEffect(() => {
+    setSuggestions(getSuggestions(plantCategory, plants));
+  }, [plantCategory, plants]);
 
   const onCellPress = (r, c) => {
     const key = `${r}-${c}`;
@@ -155,7 +153,7 @@ export default function ManageGardenScreen() {
     });
     setSubmitting(false);
     if (error) { Alert.alert('Error', error.message); return; }
-    setPlantName(''); setBotSuggestion('');
+    setPlantName('');
     setAddPlantModal(false);
     refreshPlants();
   };
@@ -172,55 +170,6 @@ export default function ManageGardenScreen() {
     setSelectedGarden(data);
     setPlotName(''); setPlotDesc('');
     setAddPlotModal(false);
-  };
-
-  const getAISuggestion = async () => {
-    setBotLoading(true); setBotSuggestion('');
-    const plantList = plants.map(p => `${p.name} (${p.category || 'plant'})`).join(', ') || 'none yet';
-    const text = await hfText(
-      `[INST]You are a community garden assistant for Chicago, IL (zone 6a). The garden has: ${plantList}. The gardener wants to add a ${plantCategory}. Suggest 2-3 specific plants that grow well together and briefly explain placement. Be concise.[/INST]`
-    );
-    setBotSuggestion(text);
-    setBotLoading(false);
-  };
-
-  const pickAndAnalyze = async () => {
-    console.log('pickAndAnalyze called');
-    try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      console.log('Permission:', perm.status);
-      if (perm.status !== 'granted') {
-        Alert.alert('Permission needed', 'Allow photo access to analyze plant health.');
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        base64: true,
-        quality: 0.6,
-      });
-      console.log('Picker done, canceled:', result.canceled);
-      if (result.canceled) return;
-      const asset = result.assets[0];
-      setVisionImage(asset.uri);
-      setVisionLoading(true);
-      setVisionResult('');
-      console.log('Sending to HF...');
-      const text = await hfVision(asset.base64, asset.mimeType || 'image/jpeg');
-      console.log('HF says:', text);
-      setVisionResult(text);
-      setVisionLoading(false);
-    } catch (e) {
-      console.error('Error:', e.message);
-      Alert.alert('Error', e.message);
-    }
-  };
-
-  const parseStatus = (text) => {
-    const lower = text.toLowerCase();
-    if (lower.includes('health: good')) return 'good';
-    if (lower.includes('health: fair')) return 'fair';
-    if (lower.includes('health: poor')) return 'poor';
-    return null;
   };
 
   if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
@@ -289,7 +238,6 @@ export default function ManageGardenScreen() {
                 onPress={() => setPlannerMode(plannerMode === 'add-plot' ? 'view' : 'add-plot')}>
                 <Text style={[styles.modeBtnText, plannerMode === 'add-plot' && { color: '#fff' }]}>🟫 Plot</Text>
               </TouchableOpacity>
-
               {CATEGORIES.map(cat => (
                 <TouchableOpacity key={cat.key}
                   style={[styles.modeBtn, plannerMode === 'add-plant' && selectedCategory === cat.key && { backgroundColor: cat.color }]}
@@ -317,22 +265,6 @@ export default function ManageGardenScreen() {
                   })}
                 </View>
               ))}
-            </View>
-
-            <View style={styles.visionSection}>
-              <Text style={styles.sectionTitle}>AI Plant Health Check</Text>
-              <TouchableOpacity style={styles.visionBtn} onPress={pickAndAnalyze} disabled={visionLoading}>
-                <Ionicons name="camera" size={18} color={COLORS.primary} />
-                <Text style={styles.visionBtnText}>{visionLoading ? 'Analyzing...' : 'Upload plant photo'}</Text>
-              </TouchableOpacity>
-              {visionLoading && <ActivityIndicator size="small" color={COLORS.primary} style={{ marginTop: 8 }} />}
-              {visionImage && <Image source={{ uri: visionImage }} style={styles.visionPreview} />}
-              {visionResult ? (
-                <View style={[styles.visionResult, { borderLeftColor: STATUS_COLORS[parseStatus(visionResult)] || COLORS.accent }]}>
-                  <Ionicons name="sparkles" size={16} color={STATUS_COLORS[parseStatus(visionResult)] || COLORS.accent} />
-                  <Text style={styles.visionResultText}>{visionResult}</Text>
-                </View>
-              ) : null}
             </View>
           </View>
         )}
@@ -385,6 +317,7 @@ export default function ManageGardenScreen() {
         )}
       </ScrollView>
 
+      {/* Add Plant Modal */}
       <Modal visible={addPlantModal} transparent animationType="slide"
         onRequestClose={() => setAddPlantModal(false)}>
         <View style={styles.overlay}>
@@ -426,16 +359,25 @@ export default function ManageGardenScreen() {
               ))}
             </View>
 
-            <TouchableOpacity style={styles.botBtn} onPress={getAISuggestion} disabled={botLoading}>
-              <Ionicons name="sparkles" size={15} color={COLORS.primary} />
-              <Text style={styles.botBtnText}>{botLoading ? 'Thinking...' : 'Ask AI for plant suggestions'}</Text>
-            </TouchableOpacity>
-            {botLoading && <ActivityIndicator size="small" color={COLORS.primary} style={{ marginTop: 6 }} />}
-            {botSuggestion ? (
-              <View style={styles.botResult}>
-                <Text style={styles.botResultText}>{botSuggestion}</Text>
+            {/* AI Suggestions */}
+            {suggestions.length > 0 && (
+              <View style={styles.suggestionsBox}>
+                <View style={styles.suggestionsHeader}>
+                  <Ionicons name="sparkles" size={14} color={COLORS.primary} />
+                  <Text style={styles.suggestionsTitle}>Recommended for Chicago (Zone 6a)</Text>
+                </View>
+                {suggestions.map((s, i) => (
+                  <TouchableOpacity key={i} style={styles.suggestionRow}
+                    onPress={() => setPlantName(s.name)}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.suggestionName}>{s.name}</Text>
+                      <Text style={styles.suggestionNotes}>{s.notes}</Text>
+                    </View>
+                    <Ionicons name="add-circle" size={20} color={COLORS.accent} />
+                  </TouchableOpacity>
+                ))}
               </View>
-            ) : null}
+            )}
 
             <TouchableOpacity
               style={[styles.primaryBtn, { marginTop: 14 }, submitting && { opacity: 0.6 }]}
@@ -447,6 +389,7 @@ export default function ManageGardenScreen() {
         </View>
       </Modal>
 
+      {/* Add Plot Modal */}
       <Modal visible={addPlotModal} transparent animationType="slide"
         onRequestClose={() => setAddPlotModal(false)}>
         <View style={styles.overlay}>
@@ -484,68 +427,63 @@ export default function ManageGardenScreen() {
 }
 
 const styles = StyleSheet.create({
-  container:      { flex: 1, backgroundColor: COLORS.background },
-  center:         { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.background, gap: 12 },
-  emptyText:      { fontSize: 17, fontWeight: '700', color: COLORS.text },
-  emptySub:       { fontSize: 13, color: COLORS.subtext },
-  pickerRow:      { maxHeight: 48, backgroundColor: COLORS.primary },
-  pickerContent:  { paddingHorizontal: 12, paddingVertical: 9, gap: 8, alignItems: 'center' },
-  chip:           { paddingHorizontal: 14, paddingVertical: 5, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.18)' },
-  chipActive:     { backgroundColor: COLORS.accent },
-  chipText:       { color: 'rgba(255,255,255,0.75)', fontSize: 13, fontWeight: '600' },
-  chipTextActive: { color: COLORS.primary },
-  actionRow:      { flexDirection: 'row', gap: 8, padding: 10, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#EEE' },
-  actionBtn:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: COLORS.primary, paddingVertical: 9, borderRadius: 10 },
-  actionBtnText:  { color: '#fff', fontSize: 12, fontWeight: '700' },
-  tabs:           { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#EEE' },
-  tab:            { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10 },
-  tabActive:      { borderBottomWidth: 2, borderBottomColor: COLORS.primary },
-  tabText:        { fontSize: 13, fontWeight: '600', color: COLORS.subtext },
-  tabTextActive:  { color: COLORS.primary },
+  container:        { flex: 1, backgroundColor: COLORS.background },
+  center:           { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.background, gap: 12 },
+  emptyText:        { fontSize: 17, fontWeight: '700', color: COLORS.text },
+  emptySub:         { fontSize: 13, color: COLORS.subtext },
+  pickerRow:        { maxHeight: 48, backgroundColor: COLORS.primary },
+  pickerContent:    { paddingHorizontal: 12, paddingVertical: 9, gap: 8, alignItems: 'center' },
+  chip:             { paddingHorizontal: 14, paddingVertical: 5, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.18)' },
+  chipActive:       { backgroundColor: COLORS.accent },
+  chipText:         { color: 'rgba(255,255,255,0.75)', fontSize: 13, fontWeight: '600' },
+  chipTextActive:   { color: COLORS.primary },
+  actionRow:        { flexDirection: 'row', gap: 8, padding: 10, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#EEE' },
+  actionBtn:        { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: COLORS.primary, paddingVertical: 9, borderRadius: 10 },
+  actionBtnText:    { color: '#fff', fontSize: 12, fontWeight: '700' },
+  tabs:             { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#EEE' },
+  tab:              { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10 },
+  tabActive:        { borderBottomWidth: 2, borderBottomColor: COLORS.primary },
+  tabText:          { fontSize: 13, fontWeight: '600', color: COLORS.subtext },
+  tabTextActive:    { color: COLORS.primary },
   plannerContainer: { padding: 12 },
-  plannerHint:    { fontSize: 13, color: COLORS.subtext, textAlign: 'center', marginBottom: 10, fontStyle: 'italic' },
-  modeRow:        { flexDirection: 'row', gap: 6, marginBottom: 10, flexWrap: 'wrap' },
-  modeBtn:        { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: '#EEE' },
-  modeBtnText:    { fontSize: 13, fontWeight: '600', color: COLORS.subtext },
-  gardenGrid:     { backgroundColor: '#C8E6C9', borderRadius: 12, padding: 6, borderWidth: 2, borderColor: '#81C784' },
-  gridRow:        { flexDirection: 'row' },
-  gridCell:       { flex: 1, aspectRatio: 1, margin: 2, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center' },
-  plotCell:       { backgroundColor: '#8B5E3C' },
-  plantEmoji:     { fontSize: 14 },
-  visionSection:  { marginTop: 16, backgroundColor: '#fff', borderRadius: 14, padding: 14 },
-  sectionTitle:   { fontSize: 14, fontWeight: '700', color: COLORS.text, marginBottom: 10 },
-  visionBtn:      { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#EFF7EE', padding: 12, borderRadius: 10 },
-  visionBtnText:  { fontSize: 13, fontWeight: '600', color: COLORS.primary },
-  visionPreview:  { width: '100%', height: 160, borderRadius: 10, marginTop: 10, resizeMode: 'cover' },
-  visionResult:   { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: '#F8FFF8', borderRadius: 10, padding: 12, marginTop: 8, borderLeftWidth: 3 },
-  visionResultText: { flex: 1, fontSize: 13, color: COLORS.text, lineHeight: 19 },
-  catRow:         { marginBottom: 12 },
-  catChip:        { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: '#EEE' },
-  catChipActive:  { backgroundColor: COLORS.primary },
-  catChipText:    { fontSize: 12, fontWeight: '600', color: COLORS.subtext },
-  plantRow:       { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8 },
-  plantEmojiBig:  { fontSize: 28 },
-  plantName:      { fontSize: 15, fontWeight: '700', color: COLORS.text },
-  plantMeta:      { fontSize: 12, color: COLORS.subtext, marginTop: 2 },
-  statusDot:      { width: 12, height: 12, borderRadius: 6 },
-  emptyCard:      { alignItems: 'center', padding: 40 },
-  overlay:        { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
-  sheet:          { backgroundColor: COLORS.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 44 },
-  handle:         { width: 40, height: 4, backgroundColor: '#DDD', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
-  sheetHeader:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  sheetTitle:     { fontSize: 20, fontWeight: '800', color: COLORS.text },
-  formLabel:      { fontSize: 13, fontWeight: '600', color: COLORS.text, marginBottom: 6, marginTop: 12 },
-  formInput:      { backgroundColor: COLORS.background, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: COLORS.text },
-  catPickRow:     { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  catPickBtn:     { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: '#EEE' },
-  catPickBtnText: { fontSize: 13, fontWeight: '600', color: COLORS.subtext },
-  statusRow:      { flexDirection: 'row', gap: 8 },
-  statusBtn:      { flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: '#EEE', alignItems: 'center' },
-  statusBtnText:  { fontSize: 13, fontWeight: '600', color: COLORS.subtext },
-  botBtn:         { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#EFF7EE', borderRadius: 10, padding: 12, marginTop: 12 },
-  botBtnText:     { fontSize: 13, fontWeight: '600', color: COLORS.primary },
-  botResult:      { backgroundColor: '#F0F7FF', borderRadius: 10, padding: 12, marginTop: 8, borderLeftWidth: 3, borderLeftColor: COLORS.accent },
-  botResultText:  { fontSize: 13, color: COLORS.text, lineHeight: 19 },
-  primaryBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, paddingVertical: 14, borderRadius: 12 },
-  primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  plannerHint:      { fontSize: 13, color: COLORS.subtext, textAlign: 'center', marginBottom: 10, fontStyle: 'italic' },
+  modeRow:          { flexDirection: 'row', gap: 6, marginBottom: 10, flexWrap: 'wrap' },
+  modeBtn:          { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: '#EEE' },
+  modeBtnText:      { fontSize: 13, fontWeight: '600', color: COLORS.subtext },
+  gardenGrid:       { backgroundColor: '#C8E6C9', borderRadius: 12, padding: 6, borderWidth: 2, borderColor: '#81C784' },
+  gridRow:          { flexDirection: 'row' },
+  gridCell:         { flex: 1, aspectRatio: 1, margin: 2, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center' },
+  plotCell:         { backgroundColor: '#8B5E3C' },
+  plantEmoji:       { fontSize: 14 },
+  catRow:           { marginBottom: 12 },
+  catChip:          { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: '#EEE' },
+  catChipActive:    { backgroundColor: COLORS.primary },
+  catChipText:      { fontSize: 12, fontWeight: '600', color: COLORS.subtext },
+  plantRow:         { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8 },
+  plantEmojiBig:    { fontSize: 28 },
+  plantName:        { fontSize: 15, fontWeight: '700', color: COLORS.text },
+  plantMeta:        { fontSize: 12, color: COLORS.subtext, marginTop: 2 },
+  statusDot:        { width: 12, height: 12, borderRadius: 6 },
+  emptyCard:        { alignItems: 'center', padding: 40 },
+  overlay:          { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
+  sheet:            { backgroundColor: COLORS.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 44 },
+  handle:           { width: 40, height: 4, backgroundColor: '#DDD', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  sheetHeader:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  sheetTitle:       { fontSize: 20, fontWeight: '800', color: COLORS.text },
+  formLabel:        { fontSize: 13, fontWeight: '600', color: COLORS.text, marginBottom: 6, marginTop: 12 },
+  formInput:        { backgroundColor: COLORS.background, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: COLORS.text },
+  catPickRow:       { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  catPickBtn:       { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: '#EEE' },
+  catPickBtnText:   { fontSize: 13, fontWeight: '600', color: COLORS.subtext },
+  statusRow:        { flexDirection: 'row', gap: 8 },
+  statusBtn:        { flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: '#EEE', alignItems: 'center' },
+  statusBtnText:    { fontSize: 13, fontWeight: '600', color: COLORS.subtext },
+  suggestionsBox:   { marginTop: 14, backgroundColor: '#F0F7EE', borderRadius: 12, padding: 12, borderLeftWidth: 3, borderLeftColor: COLORS.accent },
+  suggestionsHeader:{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+  suggestionsTitle: { fontSize: 13, fontWeight: '700', color: COLORS.primary },
+  suggestionRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#E0EED8' },
+  suggestionName:   { fontSize: 14, fontWeight: '700', color: COLORS.text },
+  suggestionNotes:  { fontSize: 12, color: COLORS.subtext, marginTop: 2, lineHeight: 16 },
+  primaryBtn:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, paddingVertical: 14, borderRadius: 12 },
+  primaryBtnText:   { color: '#fff', fontSize: 15, fontWeight: '700' },
 });
