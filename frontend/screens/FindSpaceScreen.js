@@ -20,6 +20,25 @@ export default function FindSpaceScreen() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
+  const [focusCoords, setFocusCoords] = useState(null);
+  const [geocoding, setGeocoding] = useState(false);
+
+  const geocodeAddress = async (query) => {
+    if (!query.trim()) return;
+    setGeocoding(true);
+    try {
+      const q = encodeURIComponent(query + ', Chicago, IL');
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1&countrycodes=us`,
+        { headers: { 'Accept-Language': 'en', 'User-Agent': 'ForageApp/1.0' } }
+      );
+      const data = await res.json();
+      if (data.length > 0) {
+        setFocusCoords({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
+      }
+    } catch {}
+    setGeocoding(false);
+  };
   const [initiativeModal, setInitiativeModal] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -88,17 +107,24 @@ export default function FindSpaceScreen() {
             placeholderTextColor={COLORS.subtext}
             value={search}
             onChangeText={setSearch}
-            clearButtonMode="while-editing"
+            onSubmitEditing={() => geocodeAddress(search)}
+            returnKeyType="search"
+            clearButtonMode="never"
           />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')}>
-              <Ionicons name="close-circle" size={17} color={COLORS.subtext} />
-            </TouchableOpacity>
-          )}
+          {geocoding
+            ? <ActivityIndicator size="small" color={COLORS.subtext} />
+            : search.length > 0
+              ? <TouchableOpacity onPress={() => { setSearch(''); setFocusCoords(null); }}>
+                  <Ionicons name="close-circle" size={17} color={COLORS.subtext} />
+                </TouchableOpacity>
+              : <TouchableOpacity onPress={() => geocodeAddress(search)}>
+                  <Ionicons name="arrow-forward-circle" size={17} color={COLORS.subtext} />
+                </TouchableOpacity>
+          }
         </View>
       </View>
 
-      <PlotMap plots={filtered} onSelectPlot={setSelected} />
+      <PlotMap plots={filtered} onSelectPlot={setSelected} focusCoords={focusCoords} />
 
       <View style={styles.badge}>
         <Ionicons name="location" size={14} color="#fff" />
