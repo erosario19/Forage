@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ImageBackground, Platform, useWindowDimensions,
+  ImageBackground, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,41 +20,27 @@ const NAV_BUTTONS = [
 ];
 
 export default function HomeScreen({ navigation }) {
-  const { width, height } = useWindowDimensions();
-
-  useEffect(() => {
-    if (Platform.OS === 'web') {
-      const id = 'dancing-script-font';
-      if (!document.getElementById(id)) {
-        const link = document.createElement('link');
-        link.id = id; link.rel = 'stylesheet';
-        link.href = 'https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap';
-        document.head.appendChild(link);
-      }
-    }
-  }, []);
+  const { height } = useWindowDimensions();
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      
 
-      {/* Hero — takes up most of the screen */}
-      <View style={[styles.heroWrap, { height: height * 0.78 }]}>
+      {/* Hero */}
+      <View style={[styles.heroWrap, { height: height * 0.72 }]}>
         <ImageBackground
           source={GARDEN_IMAGE}
           style={styles.hero}
           imageStyle={{ resizeMode: 'cover' }}
         >
           <View style={styles.heroDim} />
-          <Text style={[
-            styles.brandText,
-            Platform.OS === 'web' && { fontFamily: "'Dancing Script', cursive" }
-          ]}>
+          <Text style={styles.brandText}>
             forage
           </Text>
         </ImageBackground>
       </View>
 
-      {/* Nav circles — bigger, more padding from bottom */}
+      {/* Nav circles */}
       <View style={styles.navRow}>
         {NAV_BUTTONS.map(btn => (
           <TouchableOpacity
@@ -76,16 +62,16 @@ export default function HomeScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container:   { flex: 1, backgroundColor: COLORS.background },
-  heroWrap:    { width: '100%', overflow: 'hidden' },
+  container:   { flex: 1, backgroundColor: '#5A7A58'},
+  heroWrap:    { width: '100%', overflow: 'visible' },
   hero:        { flex: 1, alignItems: 'center', justifyContent: 'center' },
   heroDim:     { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(20,50,15,0.35)' },
   brandText:   {
     fontSize: 96,
-    fontWeight: '700',
     color: '#fff',
-    fontStyle: 'italic',
+    fontFamily: 'DancingScript_700Bold',
     letterSpacing: -1,
+    paddingHorizontal:20,
     textShadowColor: 'rgba(0,0,0,0.4)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 8,
@@ -97,7 +83,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 36,
     paddingHorizontal: 24,
-    paddingBottom: 16,
+    paddingBottom: 0,
+    backgroundColor:"#5A7A58",
     marginTop: -44,
     zIndex: 10,
   },
@@ -119,7 +106,7 @@ const styles = StyleSheet.create({
   navLabel:    {
     fontSize: 13,
     fontWeight: '700',
-    color: COLORS.text,
+    color: "#fff",
     textAlign: 'center',
     lineHeight: 17,
   },
