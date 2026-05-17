@@ -4,7 +4,7 @@ import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
 
 const CITY_PLANNING_URL = 'https://www.chicagoparkdistrict.com/facilities/community-gardens';
-const PROPOSE_EMAIL = 'info@cmap.illinois.gov';
+const PROPOSE_EMAIL = 'communitygardens@chicagoparkdistrict.com';
 
 const saplingIcon = () => L.divIcon({
   html: `<div style="

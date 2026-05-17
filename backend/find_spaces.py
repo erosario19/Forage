@@ -281,16 +281,22 @@ print(f"Map opened! {len(vacant_features)} vacant spaces + {len(garden_features)
 # --- Push to Supabase ---
 print("Pushing to Supabase...")
 
-# Push vacant plots
-seen = set()
+# Deduplicate by address, then drop true duplicates within ~25m
+seen_addr = set()
+seen_coords = []
 vacant_rows = []
 for f in vacant_features:
     lon, lat = f["geometry"]["coordinates"]
     p = f["properties"]
     addr = p["address"]
-    if addr in seen:
+    if addr in seen_addr:
         continue
-    seen.add(addr)
+    # Skip if another point already exists within ~25m
+    too_close = any(abs(lat - y) < 0.00025 and abs(lon - x) < 0.00025 for y, x in seen_coords)
+    if too_close:
+        continue
+    seen_addr.add(addr)
+    seen_coords.append((lat, lon))
     vacant_rows.append({
         "address": addr,
         "owner_name": p["owner"],
