@@ -21,10 +21,10 @@ const COLORS = {
 };
 
 const TABS = [
-  { name: 'Home',       component: HomeScreen,            icon: 'home',   header: '🌱 Forage' },
-  { name: 'Find Space', component: FindSpaceScreen,       icon: 'flag',   header: '🛰️ Start an Initiative' },
-  { name: 'Gardens',    component: ExistingGardensScreen, icon: 'search', header: '🗺️ Find a Garden' },
-  { name: 'My Garden',  component: ManageGardenScreen,    icon: 'leaf',   header: '🌿 My Gardens' },
+  { name: 'Home',       component: HomeScreen,            icon: 'home',   header: ' Forage' },
+  { name: 'Find Space', component: FindSpaceScreen,       icon: 'flag',   header: ' Start an Initiative' },
+  { name: 'Gardens',    component: ExistingGardensScreen, icon: 'search', header: ' Find a Garden' },
+  { name: 'My Garden',  component: ManageGardenScreen,    icon: 'leaf',   header: ' My Gardens' },
 ];
 
 export default function App() {
