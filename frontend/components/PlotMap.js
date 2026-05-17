@@ -13,8 +13,14 @@ const COLORS = {
 
 const CHICAGO = { latitude: 41.83, longitude: -87.73, latitudeDelta: 0.3, longitudeDelta: 0.3 };
 
-export default function PlotMap({ plots }) {
+export default function PlotMap({ plots, onSelectPlot }) {
   const [selected, setSelected] = useState(null);
+
+  const handleSelect = (plot, coords) => {
+    const enriched = { ...plot, _lat: coords.latitude, _lng: coords.longitude };
+    setSelected(enriched);
+    onSelectPlot?.(enriched);
+  };
 
   const getCoords = (plot) => {
     if (!plot.geometry) return null;
@@ -33,7 +39,7 @@ export default function PlotMap({ plots }) {
           if (!coords) return null;
           return (
             <Marker key={plot.id} coordinate={coords} pinColor={COLORS.primary}
-              onPress={() => setSelected(plot)} />
+              onPress={() => handleSelect(plot, coords)} />
           );
         })}
       </MapView>
